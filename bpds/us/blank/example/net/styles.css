@@ -1,0 +1,36 @@
+body {
+    background-color: aliceblue; /* Orbe Browser makes it reddish by default */
+    font-family: monospace;
+}
+header {
+    background: linear-gradient(90deg, red, magenta);
+    position: fixed;
+    width: 100%;
+}
+main {
+    text-align: center;
+    display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
+    font-size: 25px;
+}
+footer {
+    background: linear-gradient(90deg, cyan, blue);
+    position: fixed;
+  bottom: 0;
+  width: 100%;
+}
+input {
+    /*border: none;
+    outline: none;*/
+    background-color: transparent;
+    font-family: inherit;
+    font-size: inherit;
+    width: 100%;
+}
+dialog {
+    background-color: black;
+    color: green;
+}
