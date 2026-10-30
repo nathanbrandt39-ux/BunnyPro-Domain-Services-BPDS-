@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Karat Search</title>
+<link rel="icon" type="image/png" href="KaratLogo.png">
+<bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>
+<style>
+* { box-sizing: border-box; margin: 0; }
+body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+.search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.search-bar input { flex: 1; padding: 10px; font-size: 16px; border: 1px solid #ddd; border-radius: 6px; }
+.tabs { display: flex; border-bottom: 2px solid #eee; margin-bottom: 16px; }
+.tab { padding: 10px 18px; cursor: pointer; font-size: 14px; }
+.tab.active { border-bottom: 2px solid darkorange; font-weight: 600; color: orange; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.card { border-radius: 8px; overflow: hidden; background-color: lightgrey; }
+.card img { width: 100%; height: auto; max-height: 300px; object-fit: contain; }
+.card .title { font-size: 13px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.web-result { margin-bottom: 16px; background-color: lightgrey; border-radius: 8px; padding: 10px; }
+.web-result a { font-size: 15px; color: black; text-decoration: none; }
+.web-result .snippet { font-size: 13px; color: #545454; margin-top: 4px; }
+.web-result .url { font-size: 12px; color: darkcyan; }
+.audio-item { margin-bottom: 10px; background-color: lightgrey; border-radius: 8px; padding: 10px; }
+.audio-item audio { width: 100%; margin-top: 6px; }
+.load-more { display: block; margin: 16px auto; padding: 10px 28px; cursor: pointer; font-size: 14px; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
+.load-more:disabled { opacity: 0.5; }
+.status { text-align: center; font-size: 12px; color: #999; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="search-bar">
+  <input id="q" type="text" placeholder="Search..." onkeydown="if(event.key==='Enter')doSearch()">
+  <button onclick="doSearch()" style="padding:10px 20px;border:none;border-radius:6px;background:orange;color:#fff;cursor:pointer">Search</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="general" onclick="switchTab('general')">Web</div>
+  <div class="tab" data-tab="news" onclick="switchTab('news')">News</div>
+  <div class="tab" data-tab="images" onclick="switchTab('images')">Images</div>
+  <div class="tab" data-tab="videos" onclick="switchTab('videos')">Videos</div>
+  <div class="tab" data-tab="music" onclick="switchTab('music')">Audio</div>
+</div>
+
+<div id="results"></div>
+<button class="load-more" id="loadMoreBtn" onclick="loadMore()" style="display:none">Load More</button>
+<div class="status" id="status"></div>
+
+<script>
+const CATEGORIES = { general: 'general', news: 'news', images: 'images', videos: 'videos', music: 'music' };
+
+let currentTab = 'general';
+let allData = { general: [], news: [], images: [], videos: [], music: [] };
+let currentPage = 1;
+let query = '';
+
+function getDomain(url) {
+  try { return new URL(url).hostname.replace('www.', ''); }
+  catch { return ''; }
+}
+
+async function doSearch() {
+  query = document.getElementById('q').value.trim();
+  if (!query) return;
+  currentPage = 1;
+  allData = { general: [], news: [], images: [], videos: [], music: [] };
+
+  const btn = document.getElementById('loadMoreBtn');
+  btn.style.display = 'block';
+  btn.disabled = true;
+  btn.textContent = 'Searching...';
+  document.getElementById('status').textContent = '';
+
+  // Search all tabs in parallel
+  const tabs = ['general', 'news', 'images', 'videos', 'music'];
+  const results = await Promise.allSettled(
+    tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], 1))
+  );
+
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+      allData[tabs[i]] = r.value;
+    } else {
+      allData[tabs[i]] = [];
+    }
+  });
+
+  // Crawl top web results for media (background)
+  const webUrls = allData.general.slice(0, 5).map(r => r.url);
+  if (webUrls.length > 0) {
+    document.getElementById('status').textContent = 'Extracting media...';
+    const media = await electronAPI.karatExtractMedia(webUrls);
+    if (media) {
+      const seen = new Set(allData.images.map(r => r.img_src));
+      allData.images.push(...media.images.filter(i => !seen.has(i.img_src)));
+      const seenV = new Set(allData.videos.map(r => r.url));
+      allData.videos.push(...media.videos.filter(v => !seenV.has(v.url)));
+      const seenA = new Set(allData.music.map(r => r.audioSrc));
+      allData.music.push(...media.audio.filter(a => !seenA.has(a.audioSrc)));
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = `Load More (page ${currentPage})`;
+  document.getElementById('status').textContent = '';
+  renderTab(currentTab);
+}
+
+async function loadMore() {
+  currentPage++;
+  const btn = document.getElementById('loadMoreBtn');
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+
+  const tabs = ['general', 'news', 'images', 'videos', 'music'];
+  const results = await Promise.allSettled(
+    tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], currentPage))
+  );
+
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length > 0) {
+      const existing = new Set(allData[tabs[i]].map(x => x.url));
+      const fresh = r.value.filter(x => !existing.has(x.url));
+      allData[tabs[i]].push(...fresh);
+    }
+  });
+
+  const currentResults = allData[currentTab];
+  const lastBatch = results[tabs.indexOf(currentTab)];
+  const hadNew = lastBatch?.status === 'fulfilled' && lastBatch.value.length > 0;
+
+  if (!hadNew) {
+    currentPage--;
+    btn.textContent = 'No more results';
+    btn.disabled = true;
+  } else {
+    btn.textContent = `Load More (page ${currentPage})`;
+  }
+  btn.disabled = false;
+  renderTab(currentTab);
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  const el = document.getElementById('results');
+  const results = allData[tab] || [];
+
+  if (tab === 'images') {
+    el.innerHTML = `<div class="grid">${results.map(r => `
+      <div class="card">
+        <img src="${r.img_src}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
+        <div class="title">${r.title || ''}</div>
+        <div style="font-size:10px;color:#999;padding:0 8px 4px">${getDomain(r.url) || r.source || ''}</div>
+        <a href="${r.url}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
+      </div>`).join('')}</div>`;
+  } else if (tab === 'videos') {
+    el.innerHTML = `<div class="grid">${results.map(r => `
+      <div class="card" style="cursor:pointer" onclick="window.electronAPI.openPopup('${r.url}')">
+        ${r.thumbnail ? `<img src="${r.thumbnail}" loading="lazy" alt="">` : ''}
+        <div class="title">${r.title || ''}</div>
+        <div style="font-size:11px;color:#666;padding:0 8px 4px">${r.channel || ''} ${r.duration ? '· ' + r.duration : ''}</div>
+        <div style="font-size:12px;color:#4a90d9;padding:0 8px 8px">&#9658; Click to play</div>
+      </div>`).join('')}</div>`;
+  } else if (tab === 'music') {
+    el.innerHTML = results.map(r => `
+      <div class="audio-item" style="display:flex;gap:12px;align-items:center">
+        ${r.thumbnail ? `<img src="${r.thumbnail}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
+        <div style="flex:1">
+          <div style="font-size:14px">${r.title || r.url}</div>
+          <div style="font-size:11px;color:#999">${r.channel || ''} ${r.source || ''} ${r.duration ? '· ' + r.duration : ''}</div>
+          ${r.audioSrc ? `<audio src="${r.audioSrc}" controls preload="none" style="width:100%;margin-top:4px;height:32px"></audio>` : `<a href="${r.url}" target="_blank" style="font-size:13px;color:#4a90d9">Listen &rarr;</a>`}
+        </div>
+      </div>`).join('') || '<p style="color:#999">No audio results found.</p>';
+  } else if (tab === 'news') {
+    el.innerHTML = results.map(r => `
+      <div class="web-result" style="display:flex;gap:12px;align-items:flex-start">
+        ${r.thumbnail ? `<img src="${r.thumbnail}" style="width:120px;height:68px;object-fit:cover;border-radius:6px" alt="">` : ''}
+        <div style="flex:1">
+          <a href="${r.url}" target="_blank">${r.title}</a>
+          <div class="snippet">${r.content || ''}</div>
+          <div class="url">${r.source || getDomain(r.url)} ${r.date ? '· ' + r.date : ''}</div>
+        </div>
+      </div>`).join('') || '<p style="color:#999">No news results found.</p>';
+  } else {
+    el.innerHTML = results.map(r => `
+      <div class="web-result">
+        <div style="font-size:12px;color:#0d652d;margin-bottom:2px">${getDomain(r.url)}</div>
+        <a href="${r.url}" target="_blank">${r.title}</a>
+        <div class="snippet">${r.content || ''}</div>
+        <div class="url">${r.url}</div>
+      </div>`).join('') || '<p style="color:#999">No results found.</p>';
+  }
+
+  document.getElementById('status').textContent = `${results.length} results`;
+}
+</script>
+</body>
+</html>   
