@@ -35,6 +35,7 @@
 </style>
   <title>Karat Search</title>
   <bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" >   
 </head>
 <body>
 
@@ -92,7 +93,7 @@ async function scanForMedia() {
     `Found ${newImages.length} images, ${newVideos.length} videos, ${newAudio.length} audio from scanned pages`;
 
   btn.disabled = false;
-  btn.textContent = '📡 Scan more pages';
+  btn.textContent = 'Scan more pages';
 
   renderTab(currentTab);
 }   
@@ -799,7 +800,7 @@ function renderTab(tab) {
       ${r.thumbnail
         ? `<img src="${r.thumbnail}" loading="lazy" alt="">`
         : `<div style="width:100%;aspect-ratio:16/9;background:#1a1a2e;display:flex;align-items:center;justify-content:center">
-             <span style="font-size:32px">🎬</span>
+             <span style="font-size:32px">:(</span>
            </div>`}
       <div class="title">${r.title || ''}</div>
       <div style="font-size:11px;color:#666;padding:0 8px 4px">
@@ -809,7 +810,7 @@ function renderTab(tab) {
         <img src="https://icons.duckduckgo.com/ip3/${getDomain(r.url)}.ico" style="width:12px;height:12px" alt="">
         ${r.source || getDomain(r.url)}
       </div>
-      <div style="font-size:12px;color:#4a90d9;padding:0 8px 8px">▶ Click to play</div>
+      <div style="font-size:12px;color:#4a90d9;padding:0 8px 8px">&#9658; Click to play</div>
     </div>`).join('')}</div>`;
 }       else if (tab === 'music') {
     el.innerHTML = results.map(r => `
@@ -824,11 +825,11 @@ function renderTab(tab) {
           ${r.iframe
   ? `<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px;background:#f5f5f5;border-radius:8px">
        <img src="https://images.apple.com/badges/originals/podcast/Apple-Podcasts-Logo-Black.png" style="width:20px;height:20px" alt="">
-       <a href="${r.iframe}" target="_blank" style="font-size:13px;color:#4a90d9">▶ Play on ${r.source || 'Podcast Platform'}</a>
+       <a href="${r.iframe}" target="_blank" style="font-size:13px;color:#4a90d9">&#9658; Play on ${r.source || 'Podcast Platform'}</a>
      </div>`
   : r.audioSrc
     ? `<audio src="${r.audioSrc}" controls preload="none" style="width:100%;margin-top:6px;height:32px"></audio>`
-    : `<a href="${r.url}" target="_blank" style="font-size:13px;color:#4a90d9">Listen →</a>`}    
+    : `<a href="${r.url}" target="_blank" style="font-size:13px;color:#4a90d9">Listen &rarr;</a>`}    
         </div>
       </div>`).join('') || '<p style="color:#999">No audio results found.</p>';
   } else if (tab === 'news') {
