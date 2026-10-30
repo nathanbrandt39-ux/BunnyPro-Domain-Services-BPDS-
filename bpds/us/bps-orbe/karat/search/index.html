@@ -792,7 +792,7 @@ function renderTab(tab) {
           <img src="https://icons.duckduckgo.com/ip3/${getDomain(r.url)}.ico" style="width:12px;height:12px" alt="">
           ${getDomain(r.url) || r.source || ''}
         </div>
-        <a href="${r.url}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source →</a>
+        <a href="${r.url}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
       </div>`).join('')}</div>`;
   } else if (tab === 'videos') {
   el.innerHTML = `<div class="grid">${results.map((r, i) => `
@@ -841,7 +841,7 @@ function renderTab(tab) {
           <div class="snippet">${r.content || ''}</div>
           <div class="url" style="display:flex;align-items:center;gap:6px">
             <img src="https://icons.duckduckgo.com/ip3/${getDomain(r.url)}.ico" style="width:14px;height:14px" alt="">
-            ${r.source || getDomain(r.url)} ${r.date ? '· ' + r.date : ''}
+            ${r.source || getDomain(r.url)} ${r.date ? '&middot; ' + r.date : ''}
           </div>
         </div>
       </div>`).join('') || '<p style="color:#999">No news results found.</p>';
