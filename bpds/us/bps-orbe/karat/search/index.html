@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Karat Search</title>
-<link rel="icon" type="image/png" href="KaratLogo.png">
+<link rel="icon" type="image/png" href="android-chrome-512x512.png">
 <bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>
 <style>
 * { box-sizing: border-box; margin: 0; }
@@ -118,15 +118,35 @@ async function loadMore() {
     tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], currentPage))
   );
 
+  let newWebUrls = [];
+
   results.forEach((r, i) => {
     if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length > 0) {
-      const existing = new Set(allData[tabs[i]].map(x => x.url));
-      const fresh = r.value.filter(x => !existing.has(x.url));
+      const isImages = tabs[i] === 'images';
+      const existing = new Set(allData[tabs[i]].map(x => isImages ? (x.img_src || x.url) : x.url));
+      const fresh = r.value.filter(x => {
+        const key = isImages ? (x.img_src || x.url) : x.url;
+        return !existing.has(key);
+      });
       allData[tabs[i]].push(...fresh);
+      if (tabs[i] === 'general') newWebUrls = fresh.map(x => x.url);
     }
   });
 
-  const currentResults = allData[currentTab];
+  // Extract media from newly loaded web results
+  if (newWebUrls.length > 0) {
+    document.getElementById('status').textContent = 'Extracting media...';
+    const media = await electronAPI.karatExtractMedia(newWebUrls.slice(0, 3));
+    if (media) {
+      const seenI = new Set(allData.images.map(r => r.img_src));
+      allData.images.push(...(media.images || []).filter(i => !seenI.has(i.img_src)));
+      const seenV = new Set(allData.videos.map(r => r.url));
+      allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
+      const seenA = new Set(allData.music.map(r => r.audioSrc));
+      allData.music.push(...(media.audio || []).filter(a => !seenA.has(a.audioSrc)));
+    }
+  }
+
   const lastBatch = results[tabs.indexOf(currentTab)];
   const hadNew = lastBatch?.status === 'fulfilled' && lastBatch.value.length > 0;
 
@@ -138,8 +158,9 @@ async function loadMore() {
     btn.textContent = `Load More (page ${currentPage})`;
   }
   btn.disabled = false;
+  document.getElementById('status').textContent = '';
   renderTab(currentTab);
-}
+}   
 
 function switchTab(tab) {
   currentTab = tab;
