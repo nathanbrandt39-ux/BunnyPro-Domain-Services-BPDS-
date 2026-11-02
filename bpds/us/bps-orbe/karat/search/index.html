@@ -123,24 +123,25 @@ async function loadMore() {
   btn.textContent = 'Loading...';
 
   const tabs = ['general', 'news', 'images', 'videos', 'music'];
-  const results = await Promise.allSettled(
-    tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], currentPage))
-  );
-
   let newWebUrls = [];
 
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length > 0) {
-      const isImages = tabs[i] === 'images';
-      const existing = new Set(allData[tabs[i]].map(x => isImages ? (x.img_src || x.url) : x.url));
-      const fresh = r.value.filter(x => {
-        const key = isImages ? (x.img_src || x.url) : x.url;
-        return !existing.has(key);
-      });
-      allData[tabs[i]].push(...fresh);
-      if (tabs[i] === 'general') newWebUrls = fresh.map(x => x.url);
-    }
-  });
+  for (let i = 0; i < tabs.length; i++) {
+    try {
+      const r = await electronAPI.karatSearch(query, CATEGORIES[tabs[i]], currentPage);
+      if (Array.isArray(r) && r.length > 0) {
+        const isImages = tabs[i] === 'images';
+        const existing = new Set(allData[tabs[i]].map(x => isImages ? (x.img_src || x.url) : x.url));
+        const fresh = r.filter(x => {
+          const key = isImages ? (x.img_src || x.url) : x.url;
+          return !existing.has(key);
+        });
+        allData[tabs[i]].push(...fresh);
+        if (tabs[i] === 'general') newWebUrls = fresh.map(x => x.url);
+      }
+    } catch { /* skip */ }
+    // Small delay to avoid 429
+    if (i < tabs.length - 1) await new Promise(r => setTimeout(r, 800));
+  }
 
   // Extract media from newly loaded web results
   if (newWebUrls.length > 0) {
