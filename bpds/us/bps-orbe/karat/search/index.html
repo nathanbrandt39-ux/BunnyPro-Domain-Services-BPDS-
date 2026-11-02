@@ -48,6 +48,15 @@ body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; marg
 <div class="status" id="status"></div>
 
 <script>
+  // Auto-search if ?q= parameter is present (from address bar routing)
+const params = new URLSearchParams(window.location.search);
+const initialQuery = params.get('q');
+if (initialQuery) {
+  document.getElementById('q').value = initialQuery;
+  // Delay slightly to let the webview fully initialize
+  setTimeout(() => doSearch(), 300);
+}   
+  
 const CATEGORIES = { general: 'general', news: 'news', images: 'images', videos: 'videos', music: 'music' };
 
 let currentTab = 'general';
