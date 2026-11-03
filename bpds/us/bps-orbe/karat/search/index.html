@@ -58,12 +58,26 @@ if (initialQuery) {
   setTimeout(() => doSearch(), 300);
 }
 
-const CATEGORIES = { general: 'general', news: 'news', images: 'images', videos: 'videos', music: 'music' };
 let currentTab = 'general';
 let allData = { general: [], news: [], images: [], videos: [], music: [] };
 let currentPage = 1;
 let query = '';
 let ytMusicToken = '';
+
+// ── URL classification helpers ──
+const VIDEO_URLS = /(?:youtube\.com\/watch|youtu\.be\/|vimeo\.com\/|dailymotion\.com\/|twitch\.tv\/videos|\.mp4|\.webm|\.ogg|\.mov|\.avi|\.mkv)(\?|$)/i;
+const AUDIO_URLS = /\.(mp3|ogg|wav|flac|m4a|aac|opus|webm)(\?|$)|soundcloud\.com\/|bandcamp\.com\/|archive\.org\/details/i;
+const IMAGE_URLS = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)(\?|$)|imgur\.com\/|flickr\.com\/photos/i;
+const NEWS_SITES = /(?:reuters\.com|apnews\.com|bbc\.com|cnn\.com|nytimes\.com|washingtonpost\.com|theverge\.com|arstechnica\.com|techcrunch\.com|bloomberg\.com|ft\.com|wsj\.com|npr\.org|theguardian\.com|aljazeera\.com|dw\.com|france24\.com|nhk\.or\.jp|bbc\.co\.uk|nydailynews\.com|usatoday\.com|foxnews\.com|cbsnews\.com|nbcnews\.com|politico\.com|economist\.com|newyorker\.com|time\.com|newsweek\.com|usatoday\.com|thehill\.com|axios\.com|cnbc\.com|marketwatch\.com|seekingalpha\.com)/i;
+
+function classifyResult(r) {
+  const url = r.url || '';
+  if (VIDEO_URLS.test(url)) return 'videos';
+  if (AUDIO_URLS.test(url)) return 'music';
+  if (IMAGE_URLS.test(url)) return 'images';
+  if (NEWS_SITES.test(url) || r.date) return 'news';
+  return 'general';
+}
 
 function getDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); }
@@ -74,6 +88,16 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ── Distribute raw results into tabs ──
+function distributeResults(rawResults) {
+  const dist = { general: [], news: [], images: [], videos: [], music: [] };
+  for (const r of rawResults) {
+    const tab = classifyResult(r);
+    dist[tab].push(r);
+  }
+  return dist;
 }
 
 async function doSearch() {
@@ -89,49 +113,45 @@ async function doSearch() {
   btn.textContent = 'Searching...';
   document.getElementById('status').textContent = '';
 
-  // Search all tabs in parallel (skip music — we use YouTube for that)
-  const tabs = ['general', 'news', 'images', 'videos'];
-  const results = await Promise.allSettled(
-    tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], 1))
+  // ── ONE search with all categories ──
+  const rawResults = await electronAPI.karatSearch(query, 'general,news,images,videos,music', 1);
+
+  // ── Classify into tabs ──
+  const dist = distributeResults(Array.isArray(rawResults) ? rawResults : []);
+  allData.general = dist.general;
+  allData.news = dist.news;
+  allData.images = dist.images;
+  allData.videos = dist.videos;
+  allData.music = dist.music;
+
+  // ── Music: if SearXNG returned no playable audio, use YouTube as fallback ──
+  const hasPlayableAudio = allData.music.some(r =>
+    r.audioSrc || /\.(mp3|ogg|wav|flac|m4a|aac|opus)(\?|$)/i.test(r.url)
   );
-
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-      allData[tabs[i]] = r.value;
-    } else {
-      allData[tabs[i]] = [];
+  if (!hasPlayableAudio) {
+    document.getElementById('status').textContent = 'Loading music...';
+    const ytMusic = await electronAPI.ytSearch(query, null);
+    if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
+      allData.music = ytMusic.results.map(v => ({
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+        title: v.title, content: '', thumbnail: v.thumbnail,
+        img_src: v.thumbnail, date: '', source: 'YouTube',
+        channel: v.channel, duration: v.duration, audioSrc: ''
+      }));
+      ytMusicToken = ytMusic.token || '';
     }
-  });
-
-  // ── Music: use YouTube InnerTube for playable results ──
-  document.getElementById('status').textContent = 'Loading music...';
-  const ytMusic = await electronAPI.ytSearch(query, null);
-  if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
-    allData.music = ytMusic.results.map(v => ({
-      url: `https://www.youtube.com/watch?v=${v.videoId}`,
-      title: v.title,
-      content: '',
-      thumbnail: v.thumbnail,
-      img_src: v.thumbnail,
-      date: '',
-      source: 'YouTube',
-      channel: v.channel,
-      duration: v.duration,
-      audioSrc: ''
-    }));
-    ytMusicToken = ytMusic.token || '';
   }
 
-  // Crawl top web results for media (background)
-  const webUrls = allData.general.slice(0, 5).map(r => r.url);
-  if (webUrls.length > 0) {
-    document.getElementById('status').textContent = 'Extracting media...';
-    const media = await electronAPI.karatExtractMedia(webUrls);
-    if (media) {
-      const seen = new Set(allData.images.map(r => r.img_src));
-      allData.images.push(...(media.images || []).filter(i => !seen.has(i.img_src)));
-      const seenV = new Set(allData.videos.map(r => r.url));
-      allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
+  // ── Videos: if SearXNG returned no video results, use YouTube ──
+  if (allData.videos.length === 0) {
+    const ytVid = await electronAPI.ytSearch(query, null);
+    if (ytVid && Array.isArray(ytVid.results) && ytVid.results.length > 0) {
+      allData.videos = ytVid.results.map(v => ({
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
+        title: v.title, content: '', thumbnail: v.thumbnail,
+        img_src: v.thumbnail, date: '', source: 'YouTube',
+        channel: v.channel, duration: v.duration, audioSrc: ''
+      }));
     }
   }
 
@@ -147,33 +167,25 @@ async function loadMore() {
   btn.disabled = true;
   btn.textContent = 'Loading...';
 
-  const tabs = ['general', 'news', 'images', 'videos'];
-  let newWebUrls = [];
-  let hadNewResults = false;
+  // ── Load next page from SearXNG (all categories) ──
+  const rawResults = await electronAPI.karatSearch(query, 'general,news,images,videos,music', currentPage);
+  const dist = distributeResults(Array.isArray(rawResults) ? rawResults : []);
 
-  for (let i = 0; i < tabs.length; i++) {
-    try {
-      const r = await electronAPI.karatSearch(query, CATEGORIES[tabs[i]], currentPage);
-      if (Array.isArray(r) && r.length > 0) {
-        hadNewResults = true;
-        const isImages = tabs[i] === 'images';
-        const existing = new Set(allData[tabs[i]].map(x => isImages ? (x.img_src || x.url) : x.url));
-        const fresh = r.filter(x => {
-          const key = isImages ? (x.img_src || x.url) : x.url;
-          return !existing.has(key);
-        });
-        allData[tabs[i]].push(...fresh);
-        if (tabs[i] === 'general') newWebUrls = fresh.map(x => x.url);
-      }
-    } catch { /* skip */ }
-    if (i < tabs.length - 1) await new Promise(r => setTimeout(r, 800));
+  let hadNew = false;
+  for (const tab of ['general', 'news', 'images', 'videos', 'music']) {
+    if (dist[tab].length > 0) {
+      hadNew = true;
+      const existing = new Set(allData[tab].map(x => x.url));
+      const fresh = dist[tab].filter(x => !existing.has(x.url));
+      allData[tab].push(...fresh);
+    }
   }
 
-  // ── Music: load next page from YouTube ──
+  // ── Music: load next YouTube page if using YouTube fallback ──
   if (ytMusicToken) {
     const ytMusic = await electronAPI.ytSearch(query, ytMusicToken);
     if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
-      hadNewResults = true;
+      hadNew = true;
       const existing = new Set(allData.music.map(x => x.url));
       const fresh = ytMusic.results
         .filter(v => !existing.has(`https://www.youtube.com/watch?v=${v.videoId}`))
@@ -188,18 +200,7 @@ async function loadMore() {
     }
   }
 
-  if (newWebUrls.length > 0) {
-    document.getElementById('status').textContent = 'Extracting media...';
-    const media = await electronAPI.karatExtractMedia(newWebUrls.slice(0, 3));
-    if (media) {
-      const seenI = new Set(allData.images.map(r => r.img_src));
-      allData.images.push(...(media.images || []).filter(i => !seenI.has(i.img_src)));
-      const seenV = new Set(allData.videos.map(r => r.url));
-      allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
-    }
-  }
-
-  if (!hadNewResults) {
+  if (!hadNew) {
     currentPage--;
     btn.textContent = 'No more results';
     btn.disabled = true;
@@ -224,7 +225,7 @@ function renderTab(tab) {
   if (tab === 'images') {
     el.innerHTML = `<div class="grid">${results.map(r => `
       <div class="card">
-        <img src="${escapeHtml(r.img_src)}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
+        <img src="${escapeHtml(r.img_src || r.thumbnail || r.url)}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
         <div class="title">${escapeHtml(r.title || '')}</div>
         <div style="font-size:10px;color:#999;padding:0 8px 4px">${escapeHtml(getDomain(r.url) || r.source || '')}</div>
         <a href="${escapeHtml(r.url)}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
@@ -233,7 +234,7 @@ function renderTab(tab) {
   } else if (tab === 'videos') {
     el.innerHTML = `<div class="grid">${results.map(r => {
       const ytMatch = r.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
-      const isDirectVideo = /\.(mp4|webm|ogg|mov)(\?|$)/i.test(r.url);
+      const isDirectVideo = /\.(mp4|webm|ogg|mov|avi|mkv)(\?|$)/i.test(r.url);
       let playerHtml = '';
       if (ytMatch) {
         playerHtml = `<iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0" allow="autoplay; encrypted-media" allowfullscreen loading="lazy"></iframe>`;
@@ -254,7 +255,7 @@ function renderTab(tab) {
   } else if (tab === 'music') {
     el.innerHTML = results.map(r => {
       const ytMatch = r.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
-      const isDirectAudio = /\.(mp3|ogg|wav|flac|m4a|aac|webm)(\?|$)/i.test(r.url);
+      const isDirectAudio = /\.(mp3|ogg|wav|flac|m4a|aac|opus)(\?|$)/i.test(r.url);
       let playerHtml = '';
       if (ytMatch) {
         playerHtml = `<div style="position:relative;padding-top:56.25%;margin-top:6px">
