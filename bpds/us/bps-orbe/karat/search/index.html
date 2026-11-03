@@ -63,6 +63,7 @@ let currentTab = 'general';
 let allData = { general: [], news: [], images: [], videos: [], music: [] };
 let currentPage = 1;
 let query = '';
+let ytMusicToken = '';
 
 function getDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); }
@@ -80,6 +81,7 @@ async function doSearch() {
   if (!query) return;
   currentPage = 1;
   allData = { general: [], news: [], images: [], videos: [], music: [] };
+  ytMusicToken = '';
 
   const btn = document.getElementById('loadMoreBtn');
   btn.style.display = 'block';
@@ -87,7 +89,8 @@ async function doSearch() {
   btn.textContent = 'Searching...';
   document.getElementById('status').textContent = '';
 
-  const tabs = ['general', 'news', 'images', 'videos', 'music'];
+  // Search all tabs in parallel (skip music — we use YouTube for that)
+  const tabs = ['general', 'news', 'images', 'videos'];
   const results = await Promise.allSettled(
     tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], 1))
   );
@@ -100,6 +103,25 @@ async function doSearch() {
     }
   });
 
+  // ── Music: use YouTube InnerTube for playable results ──
+  document.getElementById('status').textContent = 'Loading music...';
+  const ytMusic = await electronAPI.ytSearch(query, null);
+  if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
+    allData.music = ytMusic.results.map(v => ({
+      url: `https://www.youtube.com/watch?v=${v.videoId}`,
+      title: v.title,
+      content: '',
+      thumbnail: v.thumbnail,
+      img_src: v.thumbnail,
+      date: '',
+      source: 'YouTube',
+      channel: v.channel,
+      duration: v.duration,
+      audioSrc: ''
+    }));
+    ytMusicToken = ytMusic.token || '';
+  }
+
   // Crawl top web results for media (background)
   const webUrls = allData.general.slice(0, 5).map(r => r.url);
   if (webUrls.length > 0) {
@@ -110,8 +132,6 @@ async function doSearch() {
       allData.images.push(...(media.images || []).filter(i => !seen.has(i.img_src)));
       const seenV = new Set(allData.videos.map(r => r.url));
       allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
-      const seenA = new Set(allData.music.map(r => r.audioSrc || r.url));
-      allData.music.push(...(media.audio || []).filter(a => !seenA.has(a.audioSrc || a.url)));
     }
   }
 
@@ -127,7 +147,7 @@ async function loadMore() {
   btn.disabled = true;
   btn.textContent = 'Loading...';
 
-  const tabs = ['general', 'news', 'images', 'videos', 'music'];
+  const tabs = ['general', 'news', 'images', 'videos'];
   let newWebUrls = [];
   let hadNewResults = false;
 
@@ -149,6 +169,25 @@ async function loadMore() {
     if (i < tabs.length - 1) await new Promise(r => setTimeout(r, 800));
   }
 
+  // ── Music: load next page from YouTube ──
+  if (ytMusicToken) {
+    const ytMusic = await electronAPI.ytSearch(query, ytMusicToken);
+    if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
+      hadNewResults = true;
+      const existing = new Set(allData.music.map(x => x.url));
+      const fresh = ytMusic.results
+        .filter(v => !existing.has(`https://www.youtube.com/watch?v=${v.videoId}`))
+        .map(v => ({
+          url: `https://www.youtube.com/watch?v=${v.videoId}`,
+          title: v.title, content: '', thumbnail: v.thumbnail,
+          img_src: v.thumbnail, date: '', source: 'YouTube',
+          channel: v.channel, duration: v.duration, audioSrc: ''
+        }));
+      allData.music.push(...fresh);
+      ytMusicToken = ytMusic.token || '';
+    }
+  }
+
   if (newWebUrls.length > 0) {
     document.getElementById('status').textContent = 'Extracting media...';
     const media = await electronAPI.karatExtractMedia(newWebUrls.slice(0, 3));
@@ -157,8 +196,6 @@ async function loadMore() {
       allData.images.push(...(media.images || []).filter(i => !seenI.has(i.img_src)));
       const seenV = new Set(allData.videos.map(r => r.url));
       allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
-      const seenA = new Set(allData.music.map(r => r.audioSrc || r.url));
-      allData.music.push(...(media.audio || []).filter(a => !seenA.has(a.audioSrc || a.url)));
     }
   }
 
@@ -216,17 +253,24 @@ function renderTab(tab) {
 
   } else if (tab === 'music') {
     el.innerHTML = results.map(r => {
+      const ytMatch = r.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
       const isDirectAudio = /\.(mp3|ogg|wav|flac|m4a|aac|webm)(\?|$)/i.test(r.url);
       let playerHtml = '';
-      if (r.audioSrc) {
+      if (ytMatch) {
+        playerHtml = `<div style="position:relative;padding-top:56.25%;margin-top:6px">
+          <iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0"
+            style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"
+            allow="autoplay; encrypted-media" allowfullscreen loading="lazy"></iframe>
+        </div>`;
+      } else if (r.audioSrc) {
         playerHtml = `<audio src="${escapeHtml(r.audioSrc)}" controls preload="none"></audio>`;
       } else if (isDirectAudio) {
         playerHtml = `<audio src="${escapeHtml(r.url)}" controls preload="none"></audio>`;
       } else {
-        playerHtml = `<a href="javascript:void(0)" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')" style="font-size:13px;color:#4a90d9;cursor:pointer">▶ Play</a>`;
+        playerHtml = `<a href="javascript:void(0)" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')" style="font-size:13px;color:#4a90d9;cursor:pointer">&#9654; Play</a>`;
       }
       return `
-        <div class="audio-item" style="display:flex;gap:12px;align-items:center">
+        <div class="audio-item" style="display:flex;gap:12px;align-items:flex-start">
           ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
           <div style="flex:1">
             <div style="font-size:14px">${escapeHtml(r.title || r.url)}</div>
