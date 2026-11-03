@@ -59,11 +59,10 @@ let currentTab = 'general';
 let allData = { general: [], news: [], images: [], videos: [], music: [] };
 let currentPage = 1;
 let query = '';
-let ytMusicToken = '';
 
 // ── URL classification helpers ──
 const VIDEO_URLS = /(?:youtube\.com\/watch|youtu\.be\/|vimeo\.com\/|dailymotion\.com\/|twitch\.tv\/videos|\.mp4|\.webm|\.ogg|\.mov|\.avi|\.mkv)(\?|$)/i;
-const AUDIO_URLS = /\.(mp3|ogg|wav|flac|m4a|aac|opus|webm)(\?|$)|soundcloud\.com\/|bandcamp\.com\/|archive\.org\/details/i;
+const AUDIO_URLS = /\.(mp3|ogg|oga|wav|flac|m4a|aac|opus|webm|wma|aiff|alac)(\?|$)|soundcloud\.com\/|bandcamp\.com\/|archive\.org\/details|podcast|\.rss|librivox\.org|freesound\.org|snd\.cloud|audiomack\.com|tunein\.com|player\.fm|overcast\.fm|anchor\.fm|simplecast\.com|transistor\.fm|podcast\.app|music\.brainz\.org/i;
 const IMAGE_URLS = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)(\?|$)|imgur\.com\/|flickr\.com\/photos/i;
 const NEWS_SITES = /(?:reuters\.com|apnews\.com|bbc\.com|cnn\.com|nytimes\.com|washingtonpost\.com|theverge\.com|arstechnica\.com|techcrunch\.com|bloomberg\.com|ft\.com|wsj\.com|npr\.org|theguardian\.com|aljazeera\.com|dw\.com|france24\.com|nhk\.or\.jp|bbc\.co\.uk|nydailynews\.com|usatoday\.com|foxnews\.com|cbsnews\.com|nbcnews\.com|politico\.com|economist\.com|newyorker\.com|time\.com|newsweek\.com|thehill\.com|axios\.com|cnbc\.com|marketwatch\.com)/i;
 
@@ -101,7 +100,6 @@ async function doSearch() {
   if (!query) return;
   currentPage = 1;
   allData = { general: [], news: [], images: [], videos: [], music: [] };
-  ytMusicToken = '';
 
   const btn = document.getElementById('loadMoreBtn');
   btn.style.display = 'block';
@@ -109,7 +107,6 @@ async function doSearch() {
   btn.textContent = 'Searching...';
   document.getElementById('status').textContent = '';
 
-  // ── ONE search with all categories ──
   const rawResults = await electronAPI.karatSearch(query, 'general,news,images,videos,music', 1);
   const dist = distributeResults(Array.isArray(rawResults) ? rawResults : []);
   allData.general = dist.general;
@@ -117,37 +114,6 @@ async function doSearch() {
   allData.images = dist.images;
   allData.videos = dist.videos;
   allData.music = dist.music;
-
-  // ── Music: YouTube fallback if no playable audio found ──
-  const hasPlayableAudio = allData.music.some(r =>
-    r.audioSrc || /\.(mp3|ogg|wav|flac|m4a|aac|opus)(\?|$)/i.test(r.url)
-  );
-  if (!hasPlayableAudio) {
-    document.getElementById('status').textContent = 'Loading music...';
-    const ytMusic = await electronAPI.ytSearch(query, null);
-    if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
-      allData.music = ytMusic.results.map(v => ({
-        url: `https://www.youtube.com/watch?v=${v.videoId}`,
-        title: v.title, content: '', thumbnail: v.thumbnail,
-        img_src: v.thumbnail, date: '', source: 'YouTube',
-        channel: v.channel, duration: v.duration, audioSrc: ''
-      }));
-      ytMusicToken = ytMusic.token || '';
-    }
-  }
-
-  // ── Videos: YouTube fallback if no video results ──
-  if (allData.videos.length === 0) {
-    const ytVid = await electronAPI.ytSearch(query, null);
-    if (ytVid && Array.isArray(ytVid.results) && ytVid.results.length > 0) {
-      allData.videos = ytVid.results.map(v => ({
-        url: `https://www.youtube.com/watch?v=${v.videoId}`,
-        title: v.title, content: '', thumbnail: v.thumbnail,
-        img_src: v.thumbnail, date: '', source: 'YouTube',
-        channel: v.channel, duration: v.duration, audioSrc: ''
-      }));
-    }
-  }
 
   btn.disabled = false;
   btn.textContent = `Load More (page ${currentPage})`;
@@ -171,25 +137,6 @@ async function loadMore() {
       const existing = new Set(allData[tab].map(x => x.url));
       const fresh = dist[tab].filter(x => !existing.has(x.url));
       allData[tab].push(...fresh);
-    }
-  }
-
-  // ── Music: YouTube next page ──
-  if (ytMusicToken) {
-    const ytMusic = await electronAPI.ytSearch(query, ytMusicToken);
-    if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
-      hadNew = true;
-      const existing = new Set(allData.music.map(x => x.url));
-      const fresh = ytMusic.results
-        .filter(v => !existing.has(`https://www.youtube.com/watch?v=${v.videoId}`))
-        .map(v => ({
-          url: `https://www.youtube.com/watch?v=${v.videoId}`,
-          title: v.title, content: '', thumbnail: v.thumbnail,
-          img_src: v.thumbnail, date: '', source: 'YouTube',
-          channel: v.channel, duration: v.duration, audioSrc: ''
-        }));
-      allData.music.push(...fresh);
-      ytMusicToken = ytMusic.token || '';
     }
   }
 
