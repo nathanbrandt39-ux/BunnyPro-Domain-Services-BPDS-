@@ -5,7 +5,7 @@
 <title>Karat Search</title>
 <link rel="icon" type="image/png" href="android-chrome-512x512.png">
 <bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: repo:; media-src 'self' data: https: repo:; frame-src https://www.youtube-nocookie.com; connect-src 'self' https:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: repo:; media-src 'self' data: https: repo:; connect-src 'self' https:">
 <style>
 * { box-sizing: border-box; margin: 0; }
 body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
@@ -18,14 +18,11 @@ body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; marg
 .card { border-radius: 8px; overflow: hidden; background-color: lightgrey; }
 .card img { width: 100%; height: auto; max-height: 300px; object-fit: contain; }
 .card .title { font-size: 13px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card iframe { width: 100%; aspect-ratio: 16/9; border: none; display: block; }
-.card video { width: 100%; aspect-ratio: 16/9; background: #000; display: block; }
 .web-result { margin-bottom: 16px; background-color: lightgrey; border-radius: 8px; padding: 10px; }
 .web-result a { font-size: 15px; color: black; text-decoration: none; }
 .web-result .snippet { font-size: 13px; color: #545454; margin-top: 4px; }
 .web-result .url { font-size: 12px; color: darkcyan; }
 .audio-item { margin-bottom: 10px; background-color: lightgrey; border-radius: 8px; padding: 10px; }
-.audio-item audio { width: 100%; margin-top: 6px; }
 .load-more { display: block; margin: 16px auto; padding: 10px 28px; cursor: pointer; font-size: 14px; border: 1px solid #ddd; border-radius: 6px; background: #fff; }
 .load-more:disabled { opacity: 0.5; }
 .status { text-align: center; font-size: 12px; color: #999; margin-top: 8px; }
@@ -68,7 +65,7 @@ let ytMusicToken = '';
 const VIDEO_URLS = /(?:youtube\.com\/watch|youtu\.be\/|vimeo\.com\/|dailymotion\.com\/|twitch\.tv\/videos|\.mp4|\.webm|\.ogg|\.mov|\.avi|\.mkv)(\?|$)/i;
 const AUDIO_URLS = /\.(mp3|ogg|wav|flac|m4a|aac|opus|webm)(\?|$)|soundcloud\.com\/|bandcamp\.com\/|archive\.org\/details/i;
 const IMAGE_URLS = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)(\?|$)|imgur\.com\/|flickr\.com\/photos/i;
-const NEWS_SITES = /(?:reuters\.com|apnews\.com|bbc\.com|cnn\.com|nytimes\.com|washingtonpost\.com|theverge\.com|arstechnica\.com|techcrunch\.com|bloomberg\.com|ft\.com|wsj\.com|npr\.org|theguardian\.com|aljazeera\.com|dw\.com|france24\.com|nhk\.or\.jp|bbc\.co\.uk|nydailynews\.com|usatoday\.com|foxnews\.com|cbsnews\.com|nbcnews\.com|politico\.com|economist\.com|newyorker\.com|time\.com|newsweek\.com|usatoday\.com|thehill\.com|axios\.com|cnbc\.com|marketwatch\.com|seekingalpha\.com)/i;
+const NEWS_SITES = /(?:reuters\.com|apnews\.com|bbc\.com|cnn\.com|nytimes\.com|washingtonpost\.com|theverge\.com|arstechnica\.com|techcrunch\.com|bloomberg\.com|ft\.com|wsj\.com|npr\.org|theguardian\.com|aljazeera\.com|dw\.com|france24\.com|nhk\.or\.jp|bbc\.co\.uk|nydailynews\.com|usatoday\.com|foxnews\.com|cbsnews\.com|nbcnews\.com|politico\.com|economist\.com|newyorker\.com|time\.com|newsweek\.com|thehill\.com|axios\.com|cnbc\.com|marketwatch\.com)/i;
 
 function classifyResult(r) {
   const url = r.url || '';
@@ -90,7 +87,6 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ── Distribute raw results into tabs ──
 function distributeResults(rawResults) {
   const dist = { general: [], news: [], images: [], videos: [], music: [] };
   for (const r of rawResults) {
@@ -115,8 +111,6 @@ async function doSearch() {
 
   // ── ONE search with all categories ──
   const rawResults = await electronAPI.karatSearch(query, 'general,news,images,videos,music', 1);
-
-  // ── Classify into tabs ──
   const dist = distributeResults(Array.isArray(rawResults) ? rawResults : []);
   allData.general = dist.general;
   allData.news = dist.news;
@@ -124,7 +118,7 @@ async function doSearch() {
   allData.videos = dist.videos;
   allData.music = dist.music;
 
-  // ── Music: if SearXNG returned no playable audio, use YouTube as fallback ──
+  // ── Music: YouTube fallback if no playable audio found ──
   const hasPlayableAudio = allData.music.some(r =>
     r.audioSrc || /\.(mp3|ogg|wav|flac|m4a|aac|opus)(\?|$)/i.test(r.url)
   );
@@ -142,7 +136,7 @@ async function doSearch() {
     }
   }
 
-  // ── Videos: if SearXNG returned no video results, use YouTube ──
+  // ── Videos: YouTube fallback if no video results ──
   if (allData.videos.length === 0) {
     const ytVid = await electronAPI.ytSearch(query, null);
     if (ytVid && Array.isArray(ytVid.results) && ytVid.results.length > 0) {
@@ -167,7 +161,6 @@ async function loadMore() {
   btn.disabled = true;
   btn.textContent = 'Loading...';
 
-  // ── Load next page from SearXNG (all categories) ──
   const rawResults = await electronAPI.karatSearch(query, 'general,news,images,videos,music', currentPage);
   const dist = distributeResults(Array.isArray(rawResults) ? rawResults : []);
 
@@ -181,7 +174,7 @@ async function loadMore() {
     }
   }
 
-  // ── Music: load next YouTube page if using YouTube fallback ──
+  // ── Music: YouTube next page ──
   if (ytMusicToken) {
     const ytMusic = await electronAPI.ytSearch(query, ytMusicToken);
     if (ytMusic && Array.isArray(ytMusic.results) && ytMusic.results.length > 0) {
@@ -232,54 +225,24 @@ function renderTab(tab) {
       </div>`).join('')}</div>`;
 
   } else if (tab === 'videos') {
-    el.innerHTML = `<div class="grid">${results.map(r => {
-      const ytMatch = r.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
-      const isDirectVideo = /\.(mp4|webm|ogg|mov|avi|mkv)(\?|$)/i.test(r.url);
-      let playerHtml = '';
-      if (ytMatch) {
-        playerHtml = `<iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0" allow="autoplay; encrypted-media" allowfullscreen loading="lazy"></iframe>`;
-      } else if (isDirectVideo) {
-        playerHtml = `<video src="${escapeHtml(r.url)}" controls preload="none"></video>`;
-      } else if (r.thumbnail) {
-        playerHtml = `<img src="${escapeHtml(r.thumbnail)}" loading="lazy" alt="">`;
-      }
-      const clickable = !ytMatch && !isDirectVideo;
-      return `
-        <div class="card" style="cursor:${clickable ? 'pointer' : 'default'}" ${clickable ? `onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')"` : ''}>
-          ${playerHtml}
-          <div class="title">${escapeHtml(r.title || '')}</div>
-          <div style="font-size:11px;color:#666;padding:0 8px 4px">${escapeHtml(r.channel || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
-        </div>`;
-    }).join('')}</div>`;
+    el.innerHTML = `<div class="grid">${results.map(r => `
+      <div class="card" style="cursor:pointer" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')">
+        ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" loading="lazy" alt="">` : ''}
+        <div class="title">${escapeHtml(r.title || '')}</div>
+        <div style="font-size:11px;color:#666;padding:0 8px 4px">${escapeHtml(r.channel || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
+        <div style="font-size:12px;color:#4a90d9;padding:0 8px 8px">&#9654; Click to play</div>
+      </div>`).join('')}</div>`;
 
   } else if (tab === 'music') {
-    el.innerHTML = results.map(r => {
-      const ytMatch = r.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
-      const isDirectAudio = /\.(mp3|ogg|wav|flac|m4a|aac|opus)(\?|$)/i.test(r.url);
-      let playerHtml = '';
-      if (ytMatch) {
-        playerHtml = `<div style="position:relative;padding-top:56.25%;margin-top:6px">
-          <iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0"
-            style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"
-            allow="autoplay; encrypted-media" allowfullscreen loading="lazy"></iframe>
-        </div>`;
-      } else if (r.audioSrc) {
-        playerHtml = `<audio src="${escapeHtml(r.audioSrc)}" controls preload="none"></audio>`;
-      } else if (isDirectAudio) {
-        playerHtml = `<audio src="${escapeHtml(r.url)}" controls preload="none"></audio>`;
-      } else {
-        playerHtml = `<a href="javascript:void(0)" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')" style="font-size:13px;color:#4a90d9;cursor:pointer">&#9654; Play</a>`;
-      }
-      return `
-        <div class="audio-item" style="display:flex;gap:12px;align-items:flex-start">
-          ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
-          <div style="flex:1">
-            <div style="font-size:14px">${escapeHtml(r.title || r.url)}</div>
-            <div style="font-size:11px;color:#999">${escapeHtml(r.channel || '')} ${escapeHtml(r.source || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
-            ${playerHtml}
-          </div>
-        </div>`;
-    }).join('') || '<p style="color:#999">No audio results found.</p>';
+    el.innerHTML = results.map(r => `
+      <div class="audio-item" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')">
+        ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
+        <div style="flex:1">
+          <div style="font-size:14px">${escapeHtml(r.title || r.url)}</div>
+          <div style="font-size:11px;color:#999">${escapeHtml(r.channel || '')} ${escapeHtml(r.source || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
+          <div style="font-size:12px;color:#4a90d9;margin-top:4px">&#9654; Click to play</div>
+        </div>
+      </div>`).join('') || '<p style="color:#999">No audio results found.</p>';
 
   } else if (tab === 'news') {
     el.innerHTML = results.map(r => `
