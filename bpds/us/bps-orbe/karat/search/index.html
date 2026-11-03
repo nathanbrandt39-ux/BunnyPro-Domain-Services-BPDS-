@@ -5,6 +5,7 @@
 <title>Karat Search</title>
 <link rel="icon" type="image/png" href="android-chrome-512x512.png">
 <bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: repo:; media-src 'self' data: https: repo:; frame-src https://www.youtube-nocookie.com; connect-src 'self' https:">
 <style>
 * { box-sizing: border-box; margin: 0; }
 body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
@@ -17,6 +18,8 @@ body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; marg
 .card { border-radius: 8px; overflow: hidden; background-color: lightgrey; }
 .card img { width: 100%; height: auto; max-height: 300px; object-fit: contain; }
 .card .title { font-size: 13px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card iframe { width: 100%; aspect-ratio: 16/9; border: none; display: block; }
+.card video { width: 100%; aspect-ratio: 16/9; background: #000; display: block; }
 .web-result { margin-bottom: 16px; background-color: lightgrey; border-radius: 8px; padding: 10px; }
 .web-result a { font-size: 15px; color: black; text-decoration: none; }
 .web-result .snippet { font-size: 13px; color: #545454; margin-top: 4px; }
@@ -48,17 +51,14 @@ body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; marg
 <div class="status" id="status"></div>
 
 <script>
-  // Auto-search if ?q= parameter is present (from address bar routing)
 const params = new URLSearchParams(window.location.search);
 const initialQuery = params.get('q');
 if (initialQuery) {
   document.getElementById('q').value = initialQuery;
-  // Delay slightly to let the webview fully initialize
   setTimeout(() => doSearch(), 300);
-}   
-  
-const CATEGORIES = { general: 'general', news: 'news', images: 'images', videos: 'videos', music: 'music' };
+}
 
+const CATEGORIES = { general: 'general', news: 'news', images: 'images', videos: 'videos', music: 'music' };
 let currentTab = 'general';
 let allData = { general: [], news: [], images: [], videos: [], music: [] };
 let currentPage = 1;
@@ -67,6 +67,12 @@ let query = '';
 function getDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); }
   catch { return ''; }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 async function doSearch() {
@@ -81,7 +87,6 @@ async function doSearch() {
   btn.textContent = 'Searching...';
   document.getElementById('status').textContent = '';
 
-  // Search all tabs in parallel
   const tabs = ['general', 'news', 'images', 'videos', 'music'];
   const results = await Promise.allSettled(
     tabs.map(tab => electronAPI.karatSearch(query, CATEGORIES[tab], 1))
@@ -102,11 +107,11 @@ async function doSearch() {
     const media = await electronAPI.karatExtractMedia(webUrls);
     if (media) {
       const seen = new Set(allData.images.map(r => r.img_src));
-      allData.images.push(...media.images.filter(i => !seen.has(i.img_src)));
+      allData.images.push(...(media.images || []).filter(i => !seen.has(i.img_src)));
       const seenV = new Set(allData.videos.map(r => r.url));
-      allData.videos.push(...media.videos.filter(v => !seenV.has(v.url)));
-      const seenA = new Set(allData.music.map(r => r.audioSrc));
-      allData.music.push(...media.audio.filter(a => !seenA.has(a.audioSrc)));
+      allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
+      const seenA = new Set(allData.music.map(r => r.audioSrc || r.url));
+      allData.music.push(...(media.audio || []).filter(a => !seenA.has(a.audioSrc || a.url)));
     }
   }
 
@@ -124,11 +129,13 @@ async function loadMore() {
 
   const tabs = ['general', 'news', 'images', 'videos', 'music'];
   let newWebUrls = [];
+  let hadNewResults = false;
 
   for (let i = 0; i < tabs.length; i++) {
     try {
       const r = await electronAPI.karatSearch(query, CATEGORIES[tabs[i]], currentPage);
       if (Array.isArray(r) && r.length > 0) {
+        hadNewResults = true;
         const isImages = tabs[i] === 'images';
         const existing = new Set(allData[tabs[i]].map(x => isImages ? (x.img_src || x.url) : x.url));
         const fresh = r.filter(x => {
@@ -139,11 +146,9 @@ async function loadMore() {
         if (tabs[i] === 'general') newWebUrls = fresh.map(x => x.url);
       }
     } catch { /* skip */ }
-    // Small delay to avoid 429
     if (i < tabs.length - 1) await new Promise(r => setTimeout(r, 800));
   }
 
-  // Extract media from newly loaded web results
   if (newWebUrls.length > 0) {
     document.getElementById('status').textContent = 'Extracting media...';
     const media = await electronAPI.karatExtractMedia(newWebUrls.slice(0, 3));
@@ -152,15 +157,12 @@ async function loadMore() {
       allData.images.push(...(media.images || []).filter(i => !seenI.has(i.img_src)));
       const seenV = new Set(allData.videos.map(r => r.url));
       allData.videos.push(...(media.videos || []).filter(v => !seenV.has(v.url)));
-      const seenA = new Set(allData.music.map(r => r.audioSrc));
-      allData.music.push(...(media.audio || []).filter(a => !seenA.has(a.audioSrc)));
+      const seenA = new Set(allData.music.map(r => r.audioSrc || r.url));
+      allData.music.push(...(media.audio || []).filter(a => !seenA.has(a.audioSrc || a.url)));
     }
   }
 
-  const lastBatch = results[tabs.indexOf(currentTab)];
-  const hadNew = lastBatch?.status === 'fulfilled' && lastBatch.value.length > 0;
-
-  if (!hadNew) {
+  if (!hadNewResults) {
     currentPage--;
     btn.textContent = 'No more results';
     btn.disabled = true;
@@ -170,7 +172,7 @@ async function loadMore() {
   btn.disabled = false;
   document.getElementById('status').textContent = '';
   renderTab(currentTab);
-}   
+}
 
 function switchTab(tab) {
   currentTab = tab;
@@ -185,46 +187,73 @@ function renderTab(tab) {
   if (tab === 'images') {
     el.innerHTML = `<div class="grid">${results.map(r => `
       <div class="card">
-        <img src="${r.img_src}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
-        <div class="title">${r.title || ''}</div>
-        <div style="font-size:10px;color:#999;padding:0 8px 4px">${getDomain(r.url) || r.source || ''}</div>
-        <a href="${r.url}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
+        <img src="${escapeHtml(r.img_src)}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
+        <div class="title">${escapeHtml(r.title || '')}</div>
+        <div style="font-size:10px;color:#999;padding:0 8px 4px">${escapeHtml(getDomain(r.url) || r.source || '')}</div>
+        <a href="${escapeHtml(r.url)}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
       </div>`).join('')}</div>`;
+
   } else if (tab === 'videos') {
-    el.innerHTML = `<div class="grid">${results.map(r => `
-      <div class="card" style="cursor:pointer" onclick="window.electronAPI.openPopup('${r.url}')">
-        ${r.thumbnail ? `<img src="${r.thumbnail}" loading="lazy" alt="">` : ''}
-        <div class="title">${r.title || ''}</div>
-        <div style="font-size:11px;color:#666;padding:0 8px 4px">${r.channel || ''} ${r.duration ? '· ' + r.duration : ''}</div>
-        <div style="font-size:12px;color:#4a90d9;padding:0 8px 8px">&#9658; Click to play</div>
-      </div>`).join('')}</div>`;
+    el.innerHTML = `<div class="grid">${results.map(r => {
+      const ytMatch = r.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
+      const isDirectVideo = /\.(mp4|webm|ogg|mov)(\?|$)/i.test(r.url);
+      let playerHtml = '';
+      if (ytMatch) {
+        playerHtml = `<iframe src="https://www.youtube-nocookie.com/embed/${ytMatch[1]}?rel=0" allow="autoplay; encrypted-media" allowfullscreen loading="lazy"></iframe>`;
+      } else if (isDirectVideo) {
+        playerHtml = `<video src="${escapeHtml(r.url)}" controls preload="none"></video>`;
+      } else if (r.thumbnail) {
+        playerHtml = `<img src="${escapeHtml(r.thumbnail)}" loading="lazy" alt="">`;
+      }
+      const clickable = !ytMatch && !isDirectVideo;
+      return `
+        <div class="card" style="cursor:${clickable ? 'pointer' : 'default'}" ${clickable ? `onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')"` : ''}>
+          ${playerHtml}
+          <div class="title">${escapeHtml(r.title || '')}</div>
+          <div style="font-size:11px;color:#666;padding:0 8px 4px">${escapeHtml(r.channel || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
+        </div>`;
+    }).join('')}</div>`;
+
   } else if (tab === 'music') {
-    el.innerHTML = results.map(r => `
-      <div class="audio-item" style="display:flex;gap:12px;align-items:center">
-        ${r.thumbnail ? `<img src="${r.thumbnail}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
-        <div style="flex:1">
-          <div style="font-size:14px">${r.title || r.url}</div>
-          <div style="font-size:11px;color:#999">${r.channel || ''} ${r.source || ''} ${r.duration ? '· ' + r.duration : ''}</div>
-          ${r.audioSrc ? `<audio src="${r.audioSrc}" controls preload="none" style="width:100%;margin-top:4px;height:32px"></audio>` : `<a href="${r.url}" target="_blank" style="font-size:13px;color:#4a90d9">Listen &rarr;</a>`}
-        </div>
-      </div>`).join('') || '<p style="color:#999">No audio results found.</p>';
+    el.innerHTML = results.map(r => {
+      const isDirectAudio = /\.(mp3|ogg|wav|flac|m4a|aac|webm)(\?|$)/i.test(r.url);
+      let playerHtml = '';
+      if (r.audioSrc) {
+        playerHtml = `<audio src="${escapeHtml(r.audioSrc)}" controls preload="none"></audio>`;
+      } else if (isDirectAudio) {
+        playerHtml = `<audio src="${escapeHtml(r.url)}" controls preload="none"></audio>`;
+      } else {
+        playerHtml = `<a href="javascript:void(0)" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')" style="font-size:13px;color:#4a90d9;cursor:pointer">▶ Play</a>`;
+      }
+      return `
+        <div class="audio-item" style="display:flex;gap:12px;align-items:center">
+          ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
+          <div style="flex:1">
+            <div style="font-size:14px">${escapeHtml(r.title || r.url)}</div>
+            <div style="font-size:11px;color:#999">${escapeHtml(r.channel || '')} ${escapeHtml(r.source || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
+            ${playerHtml}
+          </div>
+        </div>`;
+    }).join('') || '<p style="color:#999">No audio results found.</p>';
+
   } else if (tab === 'news') {
     el.innerHTML = results.map(r => `
       <div class="web-result" style="display:flex;gap:12px;align-items:flex-start">
-        ${r.thumbnail ? `<img src="${r.thumbnail}" style="width:120px;height:68px;object-fit:cover;border-radius:6px" alt="">` : ''}
+        ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:120px;height:68px;object-fit:cover;border-radius:6px" alt="">` : ''}
         <div style="flex:1">
-          <a href="${r.url}" target="_blank">${r.title}</a>
-          <div class="snippet">${r.content || ''}</div>
-          <div class="url">${r.source || getDomain(r.url)} ${r.date ? '· ' + r.date : ''}</div>
+          <a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.title)}</a>
+          <div class="snippet">${escapeHtml(r.content || '')}</div>
+          <div class="url">${escapeHtml(r.source || getDomain(r.url))} ${r.date ? '· ' + escapeHtml(r.date) : ''}</div>
         </div>
       </div>`).join('') || '<p style="color:#999">No news results found.</p>';
+
   } else {
     el.innerHTML = results.map(r => `
       <div class="web-result">
-        <div style="font-size:12px;color:#0d652d;margin-bottom:2px">${getDomain(r.url)}</div>
-        <a href="${r.url}" target="_blank">${r.title}</a>
-        <div class="snippet">${r.content || ''}</div>
-        <div class="url">${r.url}</div>
+        <div style="font-size:12px;color:#0d652d;margin-bottom:2px">${escapeHtml(getDomain(r.url))}</div>
+        <a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.title)}</a>
+        <div class="snippet">${escapeHtml(r.content || '')}</div>
+        <div class="url">${escapeHtml(r.url)}</div>
       </div>`).join('') || '<p style="color:#999">No results found.</p>';
   }
 
