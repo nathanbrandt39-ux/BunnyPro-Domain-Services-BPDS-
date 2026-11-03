@@ -3,9 +3,9 @@
 <head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https: repo:; media-src 'self' data: http: https: repo:; connect-src 'self' http: https:">
 <meta charset="UTF-8">
-<title>Karat Search</title>   
+<title>Karat Search</title>
 <link rel="icon" type="image/png" href="android-chrome-512x512.png">
-<bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>   
+<bpds bpds-cntry="us" bpds-toplvldom="search" bpds-dom="bps-orbe" bpds-subdom="karat"/>
 <style>
 * { box-sizing: border-box; margin: 0; }
 body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
@@ -163,13 +163,23 @@ function renderTab(tab) {
   const results = allData[tab] || [];
 
   if (tab === 'images') {
-    el.innerHTML = `<div class="grid">${results.map(r => `
-      <div class="card">
-        <img src="${escapeHtml(r.img_src || r.thumbnail || r.url)}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
-        <div class="title">${escapeHtml(r.title || '')}</div>
-        <div style="font-size:10px;color:#999;padding:0 8px 4px">${escapeHtml(getDomain(r.url) || r.source || '')}</div>
-        <a href="${escapeHtml(r.url)}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
-      </div>`).join('')}</div>`;
+    // ── FIX: only render cards that actually have an image URL ──
+    const validImages = results.filter(r => {
+      const src = r.img_src || r.thumbnail || '';
+      return src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:'));
+    });
+
+    if (validImages.length === 0) {
+      el.innerHTML = '<p style="color:#999">No image results found.</p>';
+    } else {
+      el.innerHTML = `<div class="grid">${validImages.map(r => `
+        <div class="card">
+          <img src="${escapeHtml(r.img_src || r.thumbnail)}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
+          <div class="title">${escapeHtml(r.title || '')}</div>
+          <div style="font-size:10px;color:#999;padding:0 8px 4px">${escapeHtml(getDomain(r.url) || r.source || '')}</div>
+          <a href="${escapeHtml(r.url)}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
+        </div>`).join('')}</div>`;
+    }
 
   } else if (tab === 'videos') {
     el.innerHTML = `<div class="grid">${results.map(r => `
