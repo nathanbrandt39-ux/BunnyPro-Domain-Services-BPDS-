@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https: repo:; media-src 'self' data: http: https: repo:; connect-src 'self' http: https:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://*.onion https: repo:; media-src 'self' data: http://*.onion https: repo:; connect-src 'self' http://*.onion https:">
 <meta charset="UTF-8">
 <title>Karat Search</title>
 <link rel="icon" type="image/png" href="android-chrome-512x512.png">
@@ -163,7 +163,6 @@ function renderTab(tab) {
   const results = allData[tab] || [];
 
   if (tab === 'images') {
-    // ── FIX: only render cards that actually have an image URL ──
     const validImages = results.filter(r => {
       const src = r.img_src || r.thumbnail || '';
       return src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:'));
