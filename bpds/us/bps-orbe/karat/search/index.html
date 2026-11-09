@@ -82,6 +82,13 @@ function getDomain(url) {
   catch { return ''; }
 }
 
+function getFavicon(url) {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname}/favicon.ico`;
+  } catch { return ''; }
+}   
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -202,26 +209,34 @@ function renderTab(tab) {
         </div>
       </div>`).join('') || '<p style="color:#999">No audio results found.</p>';
 
-  } else if (tab === 'news') {
+    } else if (tab === 'news') {
     el.innerHTML = results.map(r => `
       <div class="web-result" style="display:flex;gap:12px;align-items:flex-start">
         ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:120px;height:68px;object-fit:cover;border-radius:6px" alt="">` : ''}
         <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+            <img src="${getFavicon(r.url)}" width="16" height="16" style="border-radius:2px" onerror="this.style.visibility='hidden'">
+            <span style="font-size:12px;color:#0d652d">${escapeHtml(getDomain(r.url))}</span>
+            ${r.source ? `<span style="font-size:11px;color:#999">via ${escapeHtml(r.source)}</span>` : ''}
+          </div>
           <a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.title)}</a>
           <div class="snippet">${escapeHtml(r.content || '')}</div>
-          <div class="url">${escapeHtml(r.source || getDomain(r.url))} ${r.date ? '· ' + escapeHtml(r.date) : ''}</div>
+          <div class="url">${r.date ? escapeHtml(r.date) + ' · ' : ''}${escapeHtml(r.url)}</div>
         </div>
       </div>`).join('') || '<p style="color:#999">No news results found.</p>';
-
-  } else {
+  }    else {
     el.innerHTML = results.map(r => `
       <div class="web-result">
-        <div style="font-size:12px;color:#0d652d;margin-bottom:2px">${escapeHtml(getDomain(r.url))}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <img src="${getFavicon(r.url)}" width="16" height="16" style="border-radius:2px" onerror="this.style.visibility='hidden'">
+          <span style="font-size:12px;color:#0d652d">${escapeHtml(getDomain(r.url))}</span>
+          ${r.source ? `<span style="font-size:11px;color:#999">via ${escapeHtml(r.source)}</span>` : ''}
+        </div>
         <a href="${escapeHtml(r.url)}" target="_blank">${escapeHtml(r.title)}</a>
         <div class="snippet">${escapeHtml(r.content || '')}</div>
         <div class="url">${escapeHtml(r.url)}</div>
       </div>`).join('') || '<p style="color:#999">No results found.</p>';
-  }
+  }   
 
   document.getElementById('status').textContent = `${results.length} results`;
 }
