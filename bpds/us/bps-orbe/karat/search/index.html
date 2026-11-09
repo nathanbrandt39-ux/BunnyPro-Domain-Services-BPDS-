@@ -67,13 +67,15 @@ const IMAGE_URLS = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)(\?|$)|imgur\.com\
 const NEWS_SITES = /(?:reuters\.com|apnews\.com|bbc\.com|cnn\.com|nytimes\.com|washingtonpost\.com|theverge\.com|arstechnica\.com|techcrunch\.com|bloomberg\.com|ft\.com|wsj\.com|npr\.org|theguardian\.com|aljazeera\.com|dw\.com|france24\.com|nhk\.or\.jp|bbc\.co\.uk|nydailynews\.com|usatoday\.com|foxnews\.com|cbsnews\.com|nbcnews\.com|politico\.com|economist\.com|newyorker\.com|time\.com|newsweek\.com|thehill\.com|axios\.com|cnbc\.com|marketwatch\.com)/i;
 
 function classifyResult(r) {
+  // Image results are tagged by SearXNG's result-images class
+  if (r.isImage) return 'images';
   const url = r.url || '';
   if (VIDEO_URLS.test(url)) return 'videos';
   if (AUDIO_URLS.test(url)) return 'music';
   if (IMAGE_URLS.test(url)) return 'images';
   if (NEWS_SITES.test(url) || r.date) return 'news';
   return 'general';
-}
+}   
 
 function getDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); }
