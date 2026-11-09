@@ -173,7 +173,7 @@ function renderTab(tab) {
 
   const faviconRow = (r) => `
   <div style="display:flex;align-items:center;gap:4px">
-    <img src="${getFavicon(r.url)}" width="12" height="12" style="border-radius:2px" onerror="this.style.visibility='hidden'">
+    <img src="${getFavicon(r.url)}" width="6" height="6" style="border-radius:2px" onerror="this.style.visibility='hidden'">
     <span style="font-size:11px;color:#555">${escapeHtml(getDomain(r.url) || r.source || '')}</span>
   </div>`;   
 
