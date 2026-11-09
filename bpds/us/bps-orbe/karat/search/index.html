@@ -87,7 +87,7 @@ function getFavicon(url) {
     const u = new URL(url);
     return `${u.protocol}//${u.hostname}/favicon.ico`;
   } catch { return ''; }
-}   
+}     
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -171,6 +171,12 @@ function renderTab(tab) {
   const el = document.getElementById('results');
   const results = allData[tab] || [];
 
+  const faviconRow = (r) => `
+    <div style="display:flex;align-items:center;gap:6px">
+      <img src="${getFavicon(r.url)}" width="16" height="16" style="border-radius:2px" onerror="this.style.visibility='hidden'">
+      <span style="font-size:11px;color:#555">${escapeHtml(getDomain(r.url) || r.source || '')}</span>
+    </div>`;
+
   if (tab === 'images') {
     const validImages = results.filter(r => {
       const src = r.img_src || r.thumbnail || '';
@@ -184,7 +190,7 @@ function renderTab(tab) {
         <div class="card">
           <img src="${escapeHtml(r.img_src || r.thumbnail)}" loading="lazy" alt="" onerror="this.parentElement.style.display='none'">
           <div class="title">${escapeHtml(r.title || '')}</div>
-          <div style="font-size:10px;color:#999;padding:0 8px 4px">${escapeHtml(getDomain(r.url) || r.source || '')}</div>
+          <div style="padding:0 8px 4px">${faviconRow(r)}</div>
           <a href="${escapeHtml(r.url)}" target="_blank" style="font-size:11px;color:#4a90d9;padding:0 8px 8px;display:inline-block">Source &rarr;</a>
         </div>`).join('')}</div>`;
     }
@@ -194,22 +200,22 @@ function renderTab(tab) {
       <div class="card" style="cursor:pointer" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')">
         ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" loading="lazy" alt="">` : ''}
         <div class="title">${escapeHtml(r.title || '')}</div>
-        <div style="font-size:11px;color:#666;padding:0 8px 4px">${escapeHtml(r.channel || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
+        <div style="padding:0 8px 4px">${r.channel ? `<span style="font-size:11px;color:#666">${escapeHtml(r.channel)}${r.duration ? ' · ' + escapeHtml(r.duration) : ''}</span>` : faviconRow(r)}</div>
         <div style="font-size:12px;color:#4a90d9;padding:0 8px 8px">&#9654; Click to play</div>
       </div>`).join('')}</div>`;
 
   } else if (tab === 'music') {
     el.innerHTML = results.map(r => `
       <div class="audio-item" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="window.electronAPI.openPopup('${escapeHtml(r.url)}')">
-        ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : ''}
+        ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:50px;height:50px;border-radius:6px;object-fit:cover" alt="">` : `<img src="${getFavicon(r.url)}" width="50" height="50" style="border-radius:6px" onerror="this.style.visibility='hidden'">`}
         <div style="flex:1">
           <div style="font-size:14px">${escapeHtml(r.title || r.url)}</div>
-          <div style="font-size:11px;color:#999">${escapeHtml(r.channel || '')} ${escapeHtml(r.source || '')} ${r.duration ? '· ' + escapeHtml(r.duration) : ''}</div>
+          <div style="font-size:11px;color:#999">${escapeHtml(r.channel || getDomain(r.url))}${r.duration ? ' · ' + escapeHtml(r.duration) : ''}</div>
           <div style="font-size:12px;color:#4a90d9;margin-top:4px">&#9654; Click to play</div>
         </div>
       </div>`).join('') || '<p style="color:#999">No audio results found.</p>';
 
-    } else if (tab === 'news') {
+  } else if (tab === 'news') {
     el.innerHTML = results.map(r => `
       <div class="web-result" style="display:flex;gap:12px;align-items:flex-start">
         ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" style="width:120px;height:68px;object-fit:cover;border-radius:6px" alt="">` : ''}
@@ -224,7 +230,8 @@ function renderTab(tab) {
           <div class="url">${r.date ? escapeHtml(r.date) + ' · ' : ''}${escapeHtml(r.url)}</div>
         </div>
       </div>`).join('') || '<p style="color:#999">No news results found.</p>';
-  }    else {
+
+  } else {
     el.innerHTML = results.map(r => `
       <div class="web-result">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
@@ -236,10 +243,10 @@ function renderTab(tab) {
         <div class="snippet">${escapeHtml(r.content || '')}</div>
         <div class="url">${escapeHtml(r.url)}</div>
       </div>`).join('') || '<p style="color:#999">No results found.</p>';
-  }   
+  }
 
   document.getElementById('status').textContent = `${results.length} results`;
-}
+}   
 </script>
 </body>
 </html>   
